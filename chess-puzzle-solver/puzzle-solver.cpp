@@ -13,10 +13,10 @@ int main() {
     int value = chessEngine.negamax_alpha_beta_pruning(8, -infinity, infinity, best_moves_vec);
     Board b = chessEngine.board;
     for (auto move : best_moves_vec) {
-        cout << uci::moveToSan(b, move) << '\n';
+        cout << uci::moveToSan(b, move) << " ";
         b.makeMove(move);
     }
-    cout << b << '\n';
+    cout << '\n' << b << '\n';
 
     // // Using Alpha-Beta Pruning (Takes more time since it is not tracking best moves vector, it recomputes it again)
     // Move bestMove;
