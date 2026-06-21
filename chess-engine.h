@@ -125,8 +125,22 @@ public:
         }
         if (time_out) return 0;
 
-        if (board.isGameOver().second != GameResult::NONE) {
-            return get_utility_given_terminal_state(depth);
+        Movelist moves;
+        movegen::legalmoves(moves, board);   
+        
+        if (moves.size() == 0) {
+            if (board.inCheck()) {
+                // Checkmate
+                if (board.sideToMove() == Color::WHITE) return -100000 - depth;
+                else return 100000 + depth;
+            }
+            // Stalemate
+            return 0;
+        }
+
+        // Quick draw checks
+        if (board.isHalfMoveDraw() || board.isInsufficientMaterial() || board.isRepetition()) {
+            return 0;
         }
 
         if (depth == 0) {
@@ -135,8 +149,6 @@ public:
 
         if (board.sideToMove() == Color::WHITE) {
             int value = -infinity;
-            Movelist moves;
-            movegen::legalmoves(moves, board);
             for (Move move : moves) {
                 board.makeMove(move);
                 int eval = alpha_beta_pruning(depth - 1, alpha, beta);
@@ -152,8 +164,6 @@ public:
             return value;
         } else {
             int value = infinity;
-            Movelist moves;
-            movegen::legalmoves(moves, board);
             for (Move move : moves) {
                 board.makeMove(move);
                 int eval = alpha_beta_pruning(depth - 1, alpha, beta);

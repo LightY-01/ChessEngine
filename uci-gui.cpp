@@ -5,7 +5,7 @@
 #include <cstdlib>
 
 #include "chess-puzzle-solver/chess.hpp"
-#include "chess-engine.h"
+#include "chess-engine-v1.h"
 
 using namespace chess;
 using namespace std;
@@ -80,7 +80,7 @@ int main() {
 
             int timeLimit = 1000;
             if (movetime > 0) {
-                timeLimit = movetime;
+                timeLimit = movetime - 50; // Reserve 50ms for GUI
             } else {
                 Color ourColor = chessEngine.board.sideToMove();
                 int ourTime = (ourColor == Color::WHITE) ? wtime : btime;
