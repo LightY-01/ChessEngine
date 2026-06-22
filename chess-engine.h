@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 #include <algorithm>
+#include <vector>
 #include "chess-puzzle-solver/chess.hpp" // The Disservin library
 #include <chrono>
 
@@ -13,11 +14,27 @@ using namespace chrono;
 
 const int infinity = 1000000;
 
+enum TTEntryType : uint8_t {
+    EXACT = 1,  // value is exact
+    BETA = 2,   // value is a lower bound (beta cutoff)
+    ALPHA = 3   // value is an upper bound (alpha cutoff)
+};
+
+struct TTEntry {
+    uint64_t hash;
+    int score;
+    int depth;
+    TTEntryType type;
+    Move bestMove;
+};
+
 class ChessEngine {
 private:
     time_point<steady_clock> endTime;
     bool time_out;
     int nodesEvaluated;
+    const int TT_SIZE = 1048576; // 1 Megabyte of entries
+    vector<TTEntry> tt;
 
     void checkTime() {
         if (steady_clock::now() >= endTime) {
@@ -70,12 +87,56 @@ private:
         return score;
     }
 
+    int quiescence_search(int alpha, int beta) {
+        if ((nodesEvaluated++ & 2047) == 0) checkTime();
+        if (time_out) return 0;
+
+        int curValue = eval();
+        if (board.sideToMove() == Color::WHITE) {
+            if (curValue >= beta) return beta;
+            alpha = max(alpha, curValue);
+        } else {
+            if (curValue <= alpha) return alpha;
+            beta = min(beta, curValue);
+        }
+
+        Movelist captures;
+        movegen::legalmoves<movegen::MoveGenType::CAPTURE>(captures, board);
+
+        int value = curValue;
+        if (board.sideToMove() == Color::WHITE) {
+            for (Move move : captures) {
+                board.makeMove(move);
+                int eval = quiescence_search(alpha, beta);
+                board.unmakeMove(move);
+
+                if (time_out) return 0;
+                value = max(value, eval);
+                alpha = max(alpha, eval);
+                if (alpha >= beta) break;
+            }
+        } else {
+            for (Move move : captures) {
+                board.makeMove(move);
+                int eval = quiescence_search(alpha, beta);
+                board.unmakeMove(move);
+
+                if (time_out) return 0;
+                value = min(value, eval);
+                beta = min(beta, eval);
+                if (alpha >= beta) break;
+            }
+        }
+        return value;
+    }
+
 public:
     Board board;
 
     ChessEngine() {
         time_out = false;
         nodesEvaluated = 0;
+        tt.resize(TT_SIZE);
     }
 
     void loadFen(string fen) {
@@ -120,64 +181,109 @@ public:
     }
 
     int alpha_beta_pruning(int depth, int alpha, int beta) {
-        if (nodesEvaluated++ % 2048 == 0) {
-            checkTime();
+        int original_alpha = alpha;
+        int original_beta = beta;
+
+        uint64_t key = board.hash();
+        int index = key & (TT_SIZE - 1);
+
+        if (tt[index].hash == key && tt[index].depth >= depth) {
+            if (tt[index].type == EXACT) return tt[index].score;
+            else if (tt[index].type == BETA && tt[index].score >= beta) return tt[index].score;
+            else if (tt[index].type == ALPHA && tt[index].score <= alpha) return tt[index].score;
         }
+        
+        if ((nodesEvaluated++ & 2047) == 0) checkTime();
         if (time_out) return 0;
 
+        // if (board.isGameOver().second != GameResult::NONE) {
+        //     return get_utility_given_terminal_state(depth);
+        // }
+        // Small optimization
+        // board.isGameOver() generates all legal moves internally to check if any moves exist
+        // Since we are looking at all legal moves in the main loop already
+        // checking if the list is empty is enough to determine if the game is over
         Movelist moves;
-        movegen::legalmoves(moves, board);   
-        
+        movegen::legalmoves(moves, board);
+
+        // There is a problem with using depth in the terminal nodes' scores when using transposition table
+        // I will try to add this feature for prioritizing faster checkmates in later versions
         if (moves.size() == 0) {
             if (board.inCheck()) {
                 // Checkmate
-                if (board.sideToMove() == Color::WHITE) return -100000 - depth;
-                else return 100000 + depth;
+                if (board.sideToMove() == Color::WHITE) return -100000;
+                else return 100000;
             }
-            // Stalemate
-            return 0;
+            return 0; // Stalemate
         }
-
         // Quick draw checks
         if (board.isHalfMoveDraw() || board.isInsufficientMaterial() || board.isRepetition()) {
             return 0;
         }
 
-        if (depth == 0) {
-            return eval();
+        // Quiescence search at leaf nodes to handle captures
+        if (depth == 0) return quiescence_search(alpha, beta);
+
+        // Get TT move for move ordering
+        Move ttMove = Move();
+        if (tt[index].hash == key) {
+            ttMove = tt[index].bestMove;
         }
+        if (ttMove != Move()) {
+            for (int i = 0; i < moves.size(); i++) {
+                if (moves[i] == ttMove) {
+                    swap(moves[0], moves[i]);
+                    break;
+                }
+            }
+        }
+
+        int value;
+        Move bestMove = Move();
 
         if (board.sideToMove() == Color::WHITE) {
-            int value = -infinity;
+            value = -infinity;
             for (Move move : moves) {
                 board.makeMove(move);
                 int eval = alpha_beta_pruning(depth - 1, alpha, beta);
                 board.unmakeMove(move);
 
                 if (time_out) return 0;
-                value = max(value, eval);
+                if (eval > value) {
+                    value = eval;
+                    bestMove = move;
+                }
                 alpha = max(alpha, eval);
-                if (alpha >= beta) {
-                    break;
-                }
+                if (alpha >= beta) break;
             }
-            return value;
         } else {
-            int value = infinity;
+            value = infinity;
             for (Move move : moves) {
                 board.makeMove(move);
                 int eval = alpha_beta_pruning(depth - 1, alpha, beta);
                 board.unmakeMove(move);
 
                 if (time_out) return 0;
-                value = min(value, eval);
-                beta = min(beta, eval);
-                if (alpha >= beta) {
-                    break;
+                if (eval < value) {
+                    value = eval;
+                    bestMove = move;
                 }
+                beta = min(beta, eval);
+                if (alpha >= beta) break;
             }
-            return value;
         }
+        if (!time_out) {
+            if (value <= original_alpha) {
+                tt[index] = {key, value, depth, ALPHA, bestMove};
+            }
+            else if (value >= original_beta) {
+                tt[index] = {key, value, depth, BETA, bestMove};
+            }
+            else {
+                tt[index] = {key, value, depth, EXACT, bestMove};
+            }
+        }
+        return value;
     }
 
     Move findBestMove(int timeLimit) {
