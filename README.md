@@ -10,11 +10,14 @@ A high-performance chess engine written from scratch in C++.
 
 > **Neural Gambit** is a custom-built, UCI-compatible chess engine designed to transition from traditional algorithmic game theory to modern deep learning-driven evaluation. Starting from board representations and alpha-beta pruning, the engine will ultimately load trained NNUE weights for fast inference inside its C++ search loop. 
 >
-> Currently, **Version 1** is complete: featuring a fully functional Minimax + Alpha-Beta search engine with **iterative deepening** that consistently defeats a random-move engine, runs UCI communication with chess GUIs, and solves mate-in-X tactical puzzles. Future phases will introduce advanced search optimizations (Zobrist hashing, transposition tables, quiescence search) and a custom NNUE evaluation function.
+> Currently, **Version 2** is complete: featuring a fully functional Minimax + Alpha-Beta search engine optimized with **Transposition Tables**, **Quiescence Search**, and **Iterative Deepening** that consistently defeats a random-mover (scoring 100% wins in testing), runs UCI communication, and solves chess puzzles. Future phases will study and implement an Efficiently Updatable Neural Network (NNUE).
 
 ---
 
-## Features (Version 1)
+## Features (Version 2)
+- **Transposition Tables (TT):** Utilizes a 1MB transposition table storing search depths, scores, bounds flags (exact, alpha, beta), and best moves mapped to Zobrist hashes (`board.hash()`).
+- **Quiescence Search:** Evaluates only capture moves at the leaf nodes of the search tree, resolving tactical exchanges to prevent the horizon effect.
+- **Transposition Move Ordering:** Prioritizes searching the best move recorded in the transposition table first, significantly pruning the game tree.
 - **Iterative Deepening:** Incremental search depth advancement to deliver the best possible move within a specified time limit, similar to breadth-first search exploration of the game tree.
 - **Universal Chess Interface (UCI) Protocol Support:** Communicates seamlessly with standard chess GUIs (like Cute Chess, Arena, or LiChess via bridge).
 - **Adversarial Search:** Negamax & Minimax Alpha-Beta pruning for tactical evaluations.
@@ -23,10 +26,10 @@ A high-performance chess engine written from scratch in C++.
 
 ---
 
-## 📦 Version 1 Release Binaries
-The **Version 1** Release contains precompiled Windows executables:
-1. `neural-gambit.exe`: The primary chess engine running the Alpha-Beta pruning search and UCI.
-2. `random-mover.exe`: A benchmark utility that makes random legal moves, used for baseline testing and ensuring the main engine works correctly.
+## 📦 Version 2 Release Binaries
+The **Version 2** Release contains precompiled Windows executables:
+1. `neural-gambit-v2.exe`: Chess engine running the optimized Alpha-Beta search with Transposition Tables, Quiescence Search, and UCI.
+2. `random-mover.exe`: A benchmark utility that makes random legal moves, used for baseline testing.
 
 ---
 
@@ -78,7 +81,7 @@ g++ -O3 -std=c++17 uci-gui.cpp -o neural-gambit.exe
 │   ├── puzzle-solver.cpp   # Puzzle solver entry point
 │   └── README.md           
 ├── .gitignore              # Files to exclude from Git tracking
-├── chess-engine.h          # Main Chess Engine class with minimax/alpha-beta search
+├── chess-engine.h          # Main Chess Engine class with TT and Quiescence Search (Version 2.0)
 ├── uci-gui.cpp             # UCI protocol communication loop (Main Entry)
 └── README.md               
 ```
